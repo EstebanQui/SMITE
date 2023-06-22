@@ -1,0 +1,104 @@
+import cv2
+import mediapipe as mp
+
+# Initialiser Mediapipe
+mp_drawing = mp.solutions.drawing_utils
+mp_pose = mp.solutions.pose
+
+# Initialiser la webcam
+cap = cv2.VideoCapture(0)
+
+# Charger le modèle de détection de pose
+with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+    repetitions = 0
+    is_hands_up = False
+    is_body_detected = False
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            print("Impossible de lire la vidéo.")
+            break
+
+        # Convertir l'image de BGR en RGB
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Détecter la pose dans l'image
+        results = pose.process(image)
+
+        # Vérifier si tous les points de détection du corps sont présents et suffisamment confiants
+        if results.pose_landmarks is not None:
+            body_parts = [
+                mp_pose.PoseLandmark.NOSE,
+                mp_pose.PoseLandmark.LEFT_SHOULDER,
+                mp_pose.PoseLandmark.RIGHT_SHOULDER,
+                mp_pose.PoseLandmark.LEFT_ELBOW,
+                mp_pose.PoseLandmark.RIGHT_ELBOW,
+                mp_pose.PoseLandmark.LEFT_WRIST,
+                mp_pose.PoseLandmark.RIGHT_WRIST,
+                mp_pose.PoseLandmark.LEFT_HIP,
+                mp_pose.PoseLandmark.RIGHT_HIP,
+                mp_pose.PoseLandmark.LEFT_KNEE,
+                mp_pose.PoseLandmark.RIGHT_KNEE,
+                mp_pose.PoseLandmark.LEFT_ANKLE,
+                mp_pose.PoseLandmark.RIGHT_ANKLE
+            ]
+
+            is_body_detected = all(results.pose_landmarks.landmark[part].visibility > 0.5 for part in body_parts)
+
+            if is_body_detected:
+                body_color = (255, 0, 0)  # Bleu si tout le corps est détecté
+                text_color = (255, 0, 0)  # Bleu si tout le corps est détecté
+            else:
+                body_color = (0, 0, 255)  # Bleu si le corps n'est pas entièrement détecté
+                text_color = (0, 0, 255)  # Bleu si le corps n'est pas entièrement détecté
+        else:
+            is_body_detected = False
+            body_color = (255, 0, 0)  # Bleu si le corps n'est pas détecté
+            text_color = (0, 0, 255)  # Bleu si le corps n'est pas détecté
+
+        # Dessiner les articulations sur l'image avec la couleur du corps détecté
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                  mp_drawing.DrawingSpec(color=body_color, thickness=2, circle_radius=2),
+                                  mp_drawing.DrawingSpec(color=body_color, thickness=2))
+
+        # Vérifier si les mains sont levées lorsque tout le corps est détecté
+        if is_body_detected and repetitions < 5:
+            left_hand_up = results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_WRIST].y > results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_SHOULDER].y
+            right_hand_up = results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_WRIST].y > results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_SHOULDER].y
+
+            if left_hand_up and right_hand_up and not is_hands_up:
+                repetitions += 1
+                is_hands_up = True
+
+            if not left_hand_up and not right_hand_up:
+                is_hands_up = False
+
+        # Afficher les répétitions sur l'image avec la couleur du texte
+        cv2.putText(image, f"Repetitions: {repetitions}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+
+        # Afficher l'image avec les points sur le corps
+        cv2.imshow('Mouvement du corps', image)
+
+        # Vérifier si le nombre de répétitions atteint 5 pour afficher l'image de zoom-out
+        if repetitions >= 5:
+            # Charger l'image de zoom-out
+            zoom_out_image = cv2.imread('congrats.png')
+
+            # Obtenir les dimensions de l'image
+            height, width, _ = image.shape
+
+            # Redimensionner l'image de zoom-out pour correspondre aux dimensions de la webcam
+            zoom_out_image = cv2.resize(zoom_out_image, (width, height))
+
+            # Afficher l'image de zoom-out
+            cv2.imshow('Zoom out', zoom_out_image)
+
+        # Vérifier si la touche 'q' est enfoncée ou si la fenêtre est fermée
+        if cv2.waitKey(10) & 0xFF == ord('q') or cv2.getWindowProperty('Mouvement du corps', cv2.WND_PROP_VISIBLE) < 1:
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+    
